@@ -11,13 +11,11 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-import os
-import json
-
 creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 
-client = gspread.authorize(creds)
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
+client = gspread.authorize(creds)
 sheet = client.open("Consultations_Bot").sheet1
 
 # ---------------- TELEGRAM ----------------
