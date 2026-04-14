@@ -1,9 +1,32 @@
 import logging
+import os
+import json
+
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+
+# ---------------- LOGGING ----------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ---------------- ENV SAFETY ----------------
+TOKEN = os.environ.get("BOT_TOKEN")
+GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS")
+
+if not TOKEN:
+    raise RuntimeError("BOT_TOKEN is missing in environment variables")
+
+if not GOOGLE_CREDENTIALS:
+    raise RuntimeError("GOOGLE_CREDENTIALS is missing in environment variables")
 
 # ---------------- GOOGLE SHEETS ----------------
 scope = [
@@ -11,18 +34,11 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
-
+creds_dict = json.loads(GOOGLE_CREDENTIALS)
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
 client = gspread.authorize(creds)
 sheet = client.open("Consultations_Bot").sheet1
-
-# ---------------- TELEGRAM ----------------
-import os
-TOKEN = os.environ["BOT_TOKEN"]
-
-logging.basicConfig(level=logging.INFO)
 
 # ---------------- MENUS ----------------
 main_menu = [["Апрель", "Май"]]
@@ -40,7 +56,6 @@ may_dates = [
     ["26.05 онлайн", "29.05 офлайн"]
 ]
 
-# 🔹 МЕНЮ ПОТОКОВ (НОВОЕ)
 potok_menu = [
     ["B1.1/25", "B2/27"],
     ["B2/44", "B2/47"],
@@ -48,13 +63,11 @@ potok_menu = [
     ["C1/6", "C1/9"]
 ]
 
-# 🔹 МЕНЮ ПОСЛЕ ЗАПИСИ
 after_booking_menu = [
     ["Мне нужна еще одна запись"],
     ["Больше записей не требуется"]
 ]
 
-# 🔹 ФИНАЛЬНОЕ МЕНЮ
 back_menu = [["Я передумал(а), мне нужна еще запись"]]
 
 # ---------------- START ----------------
@@ -69,7 +82,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     data = context.user_data
 
-    logging.info(f"STEP: {data.get('step')} | TEXT: {text}")
+    logger.info(f"STEP: {data.get('step')} | TEXT: {text}")
 
     if "step" not in data:
         data["step"] = "name"
@@ -87,9 +100,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # -------- POTOK (КНОПКИ) --------
+    # -------- POTOK --------
     if data["step"] == "potok":
-
         all_potoks = sum(potok_menu, [])
 
         if text not in all_potoks:
@@ -105,7 +117,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # -------- MENU (МЕСЯЦ) --------
+    # -------- MENU --------
     if data["step"] == "menu":
 
         if text == "Апрель":
@@ -119,7 +131,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if text == "Май":
             data["step"] = "date"
             await update.message.reply_text(
-                "Выберите дату. Помните, что онлайн можно сдать только in-class speaking. Офлайн - все виды работ, включая writing и module test. Ссылка на онлайн-консультацию: https://us06web.zoom.us/j/88645188397?pwd=Ty8Gs9rnB6d0aAgogqzzvKraibnA8w.1 ",
+                "Выберите дату. Онлайн — только speaking. Офлайн — все части (writing, test).",
                 reply_markup=ReplyKeyboardMarkup(may_dates, resize_keyboard=True)
             )
             return
@@ -128,8 +140,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # -------- DATE --------
     if data["step"] == "date":
-
         all_dates = sum(april_dates + may_dates, [])
+
         if text not in all_dates:
             return
 
@@ -147,7 +159,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Вы записаны на {text}",
             reply_markup=ReplyKeyboardMarkup(after_booking_menu, resize_keyboard=True)
         )
-
         return
 
     # -------- AFTER BOOKING --------
@@ -155,7 +166,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if text == "Мне нужна еще одна запись":
             data["step"] = "menu"
-
             await update.message.reply_text(
                 "Выберите месяц:",
                 reply_markup=ReplyKeyboardMarkup(main_menu, resize_keyboard=True)
@@ -164,7 +174,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if text == "Больше записей не требуется":
             data["step"] = "done"
-
             await update.message.reply_text(
                 "Отлично! Увидимся на консультации.",
                 reply_markup=ReplyKeyboardMarkup(back_menu, resize_keyboard=True)
@@ -178,7 +187,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if text == "Я передумал(а), мне нужна еще запись":
             data["step"] = "menu"
-
             await update.message.reply_text(
                 "Выберите месяц:",
                 reply_markup=ReplyKeyboardMarkup(main_menu, resize_keyboard=True)
@@ -188,9 +196,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 # ---------------- RUN BOT ----------------
-app = ApplicationBuilder().token(TOKEN).build()
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-app.run_polling(drop_pending_updates=True)
+    logger.info("Bot is starting...")
+    app.run_polling(drop_pending_updates=True)
+
+
+if __name__ == "__main__":
+    main()
