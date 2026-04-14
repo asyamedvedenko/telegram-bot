@@ -11,13 +11,18 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+import os
+import json
+
+creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+
 client = gspread.authorize(creds)
 
 sheet = client.open("Consultations_Bot").sheet1
 
 # ---------------- TELEGRAM ----------------
-TOKEN = "8685164523:AAEelgVcuVR7k5lUY--2jIyVOQuXE37vGs0"
+import os
+TOKEN = os.environ["BOT_TOKEN"]
 
 logging.basicConfig(level=logging.INFO)
 
